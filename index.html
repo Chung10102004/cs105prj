@@ -1,0 +1,49 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poly Bridge Sim</title>
+    <link rel="stylesheet" href="./public/style.css">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+        #game-container { display: flex; flex-direction: column; height: 100vh; }
+        #toolbar { background-color: #333; padding: 10px; color: white; display: flex; gap: 10px; flex-wrap: wrap; } /* Added flex-wrap */
+        #toolbar button { padding: 8px 12px; background-color: #555; color: white; border: none; cursor: pointer; }
+        #toolbar button:hover { background-color: #777; }
+        #toolbar button.active { background-color: #007bff; color: white; } /* Style for active tool button */
+        #render-target { flex-grow: 1; background-color: #777777; /* Fallback */ }
+        #info-panel { background-color: #f0f0f0; padding: 10px; border-top: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="toolbar">
+            <button id="tool-add-joint">Add Joint</button>
+            <button id="tool-add-member">Add Member</button>
+            <button id="tool-add-member-2">Add Member 2</button> <!-- NEW BUTTON -->
+            <button id="tool-delete">Delete</button>
+            <button id="play-button">Play Simulation</button> <!-- Toggles between Play Sim / Edit Bridge -->
+            <button id="reset-button">Reset Bridge</button>
+            <!-- The "Run Car / Reset Car" button will be added by UIManager.js -->
+        </div>
+        <div id="render-target"></div>
+        <div id="info-panel">
+            <p>Current Tool: <span id="current-tool-display">None</span></p>
+            <p>Joints: <span id="joint-count">0</span></p>
+            <p>Members: <span id="member-count">0</span></p>
+        </div>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+</body>
+</html>

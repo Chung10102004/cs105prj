@@ -1,0 +1,72 @@
+/* public/style.css */
+html, body {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden; /* Ngăn scrollbar không mong muốn */
+    font-family: sans-serif;
+    background-color: #333; /* Màu nền cho toàn bộ trang */
+    color: #fff;
+}
+
+* {
+    box-sizing: border-box; /* Giúp việc tính toán kích thước dễ dàng hơn */
+}
+
+#game-container {
+    display: flex;
+    flex-direction: column; /* Sắp xếp toolbar, render-target, info-panel theo chiều dọc */
+    width: 100%;
+    height: 100%;
+    background-color: #444; /* Có thể bỏ nếu body đã có màu nền */
+}
+
+#toolbar {
+    padding: 10px;
+    background-color: #2a2a2a;
+    width: 100%;
+    text-align: center; /* Buttons will be centered and wrap if space is insufficient */
+    flex-shrink: 0; /* Ngăn toolbar co lại */
+}
+
+#toolbar button {
+    margin: 5px; /* Added some vertical margin for wrapping, and horizontal margin */
+    padding: 8px 12px;
+    background-color: #5c5c5c;
+    color: white;
+    border: 1px solid #777;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-block; /* Ensure wrapping behavior with text-align: center */
+}
+
+#toolbar button:hover {
+    background-color: #6c6c6c;
+}
+
+#toolbar button.active {
+    background-color: #007bff;
+    border-color: #0056b3;
+    color: white; /* Explicitly set active button text color */
+}
+
+#render-target {
+    flex-grow: 1; /* Quan trọng: Cho phép render-target chiếm hết không gian còn lại */
+    width: 100%;   /* Chiếm toàn bộ chiều ngang của #game-container */
+    background-color: #777777; /* Màu nền fallback, scene sẽ ghi đè */
+    position: relative; /* Cho các overlay tiềm năng */
+}
+
+#info-panel {
+    padding: 10px;
+    background-color: #2a2a2a;
+    width: 100%;
+    font-size: 0.9em;
+    flex-shrink: 0; /* Ngăn info-panel co lại */
+    color: #f0f0f0; /* Lighter text color for dark background */
+}
+
+#info-panel p {
+    margin: 5px 0;
+}
