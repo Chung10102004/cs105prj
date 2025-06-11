@@ -5,11 +5,11 @@ import { createCamera } from './camera.js';
 
 // Constants
 const DECK_MEMBER_COLOR = 0x0077cc;
-const COLUMN_MEMBER_COLOR = 0xccaa00;
+const COLUMN_MEMBER_COLOR = 0xD2B48C;
 const DECK_RECTANGLE_COLOR = 0x888888;
 const JOINT_DISPLAY_RADIUS_3D = 0.001;
-// const DECK_MEMBER_THICKNESS_RADIUS = 0.2; 
-const COLUMN_MEMBER_THICKNESS_RADIUS = 0.02;
+// const DECK_MEMBER_THICKNESS_RADIUS = 0.2;
+const COLUMN_MEMBER_THICKNESS_RADIUS = 0.01;
 
 const GRAVITY = 9.8 * 0.8;
 const INITIAL_CAR_Z_PADDING = -1.95;
@@ -19,7 +19,7 @@ const FRONT_RAY_Y_OFFSET_FROM_BOTTOM = 0.03;
 const FRONT_OBSTACLE_ANGLE_THRESHOLD = Math.PI / 3.5; // Approx 51.4 degrees from vertical
 
 const BUILD_MODE_Y_TO_3D_HEIGHT_SCALE = 0.03;
-const BRIDGE_PLACEMENT_OFFSET_Y_ON_MAP = -0.87;
+const BRIDGE_PLACEMENT_OFFSET_Y_ON_MAP = -0.88; // Used for bridge relative to map
 
 // const DEBUG_SHADOW_CAMERA = false;
 // const DEBUG_CAR_RAYS = false; // Set to true to see car's downward rays
@@ -58,7 +58,7 @@ constructor(renderTargetElement, bridgeData) {
     this.fallStartTumbleThreshold = this.carHeight * 0.3;
     this.bounceFactor = 0.3;
     this.minBounceVelocity = 0.05;
-    this.lastGroundY = 0; 
+    this.lastGroundY = 0;
 
     this.currentGroundNormal = new THREE.Vector3(0, 1, 0);
     this.onValidGround = false;
@@ -101,16 +101,18 @@ constructor(renderTargetElement, bridgeData) {
     //     this.shadowHelper = null;
     // }
     this.sunMesh = null;
-    this.sunVisualDistance = 7;
-    this.sunRadius = 1;
+    this.sunVisualDistance = 5;
+    this.sunRadius = 0.5;
 
     // if (DEBUG_CAR_RAYS) {
     //     this.debugRayHelpers = [];
     // }
 
+    this.mapAnimationMixer = null; // <<< ADDED FOR MAP ANIMATION
+
     this.initSceneAndCamera();
     this.initMaterials();
-    this.loadMapModel(); 
+    this.loadMapModel();
 }
 
 setRenderer(renderer) {
@@ -122,30 +124,30 @@ setRenderer(renderer) {
 }
 
 initSceneAndCamera() {
-    this.scene.background = new THREE.Color(0x87CEEB); 
+    this.scene.background = new THREE.Color(0x87CEEB);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7); 
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     this.scene.add(ambientLight);
 
-    this.hemisphereLight = new THREE.HemisphereLight(0xffffbb, 0x080820, 0.5); 
+    this.hemisphereLight = new THREE.HemisphereLight(0xffffbb, 0x080820, 0.5);
     this.scene.add(this.hemisphereLight);
 
-    this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); 
-    this.directionalLight.position.set(25, 35, 30); 
+    this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    this.directionalLight.position.set(25, 35, 0); // User changed Z to 0
     this.directionalLight.castShadow = true;
     this.scene.add(this.directionalLight);
 
     this.directionalLight.shadow.mapSize.width = 2048;
     this.directionalLight.shadow.mapSize.height = 2048;
-    const shadowCamSize = 20; 
+    const shadowCamSize = 20;
     this.directionalLight.shadow.camera.near = 1;
-    this.directionalLight.shadow.camera.far = 100; 
+    this.directionalLight.shadow.camera.far = 100;
     this.directionalLight.shadow.camera.left = -shadowCamSize;
     this.directionalLight.shadow.camera.right = shadowCamSize;
     this.directionalLight.shadow.camera.top = shadowCamSize;
     this.directionalLight.shadow.camera.bottom = -shadowCamSize;
     this.directionalLight.shadow.bias = -0.001;
-    this.scene.add(this.directionalLight.target); 
+    this.scene.add(this.directionalLight.target);
 
     const sunGeometry = new THREE.SphereGeometry(this.sunRadius, 32, 32);
     const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffddaa, fog: false });
@@ -158,7 +160,7 @@ initSceneAndCamera() {
     if (typeof createCamera === 'function') {
         this.cameraControls = createCamera(this.renderTarget);
         this.camera = this.cameraControls.camera;
-        this.camera.far = this.sunVisualDistance * 2;
+        this.camera.far = this.sunVisualDistance * 2; // camera.far will be 10
         this.camera.updateProjectionMatrix();
     } else {
         console.error("SimulationMode: createCamera is not a function. Using default.");
@@ -184,7 +186,7 @@ initMaterials() {
 loadMapModel() {
     const loader = new GLTFLoader();
     loader.load(
-        './models/Untitled1.gltf',
+        './models/island.gltf', // User changed map model
         (gltf) => {
             if (!gltf || !gltf.scene || !(gltf.scene instanceof THREE.Object3D)) {
                 console.error("GLTF map loaded, but gltf.scene is invalid.", gltf);
@@ -194,7 +196,7 @@ loadMapModel() {
                 this.scene.add(this.mapModel);
                 this.mapModel.scale.set(0.25, 0.25, 0.25);
                 this.mapModel.updateMatrixWorld(true);
-                
+
                 this.mapModel.traverse(node => {
                     if (node.isMesh) {
                         node.castShadow = true;
@@ -203,10 +205,23 @@ loadMapModel() {
                 });
                 console.log("SimulationMode: Map GLTF model processed.");
 
+                if (gltf.animations && gltf.animations.length) {
+                    this.mapAnimationMixer = new THREE.AnimationMixer(this.mapModel);
+                    gltf.animations.forEach((clip) => {
+                        const action = this.mapAnimationMixer.clipAction(clip);
+                        action.setLoop(THREE.LoopRepeat);
+                        action.play();
+                    });
+                    console.log(`SimulationMode: Map animations (${gltf.animations.length}) started.`);
+                } else {
+                    console.log("SimulationMode: No animations found in map model.");
+                }
+
                 const mapBox = new THREE.Box3().setFromObject(this.mapModel);
                 if (!mapBox.isEmpty()) {
                     mapBox.getCenter(this.calculatedBridgeExtents.mapCenter);
-                    this.calculatedBridgeExtents.bridgeBaseY_3D = mapBox.max.y;
+                    this.calculatedBridgeExtents.bridgeBaseY_3D = mapBox.max.y; // This is the top of the map
+                    console.log("Sim: Map loaded. Center:", this.calculatedBridgeExtents.mapCenter, "Max Y:", this.calculatedBridgeExtents.bridgeBaseY_3D);
                     if (this.directionalLight) {
                         this.directionalLight.target.position.copy(this.calculatedBridgeExtents.mapCenter);
                         this.directionalLight.target.updateMatrixWorld();
@@ -218,14 +233,14 @@ loadMapModel() {
                      if (this.directionalLight) this.directionalLight.target.position.set(0,0,0);
                 }
             }
-            this.buildBridge3D(); 
-            this.addCar();       
+            this.buildBridge3D();
+            this.addCar();
         },
         (xhr) => { console.log(`SimulationMode: Map GLTF model ${(xhr.loaded / xhr.total * 100).toFixed(2)}% loaded`); },
         (error) => {
             console.error('SimulationMode: Map GLTF loading FAILED.', error);
             this.showErrorToUser(`Failed to load map model: ${error.message || 'Unknown error'}.`);
-            this.calculatedBridgeExtents.mapCenter.set(0,0,0); 
+            this.calculatedBridgeExtents.mapCenter.set(0,0,0);
             this.calculatedBridgeExtents.bridgeBaseY_3D = 0;
             if (this.directionalLight) this.directionalLight.target.position.set(0,0,0);
             this.buildBridge3D();
@@ -246,39 +261,61 @@ loadBoatModel() {
                 this.boatModel = gltf.scene;
                 this.scene.add(this.boatModel);
                 let mapCenterForBoat = new THREE.Vector3(0,0,0);
-                let mapTopYForBoat = 0;
+                let mapTopYForBoat = 0; // This will be the general highest point of the island
+
                 if (this.mapModel) {
-                    this.mapModel.updateMatrixWorld(true);
+                    this.mapModel.updateMatrixWorld(true); // Ensure map's matrix is up-to-date
                     const mapBoundingBox = new THREE.Box3().setFromObject(this.mapModel);
                     if (!mapBoundingBox.isEmpty()) {
                         mapBoundingBox.getCenter(mapCenterForBoat);
                         mapTopYForBoat = mapBoundingBox.max.y;
+                    } else {
+                        console.warn("Sim: Map bounding box is empty when trying to position boat.");
                     }
+                } else {
+                    console.warn("Sim: Map model not available when trying to position boat.");
                 }
 
+                // <<< MODIFIED: Revert scale to previous working values (or adjust if model changed)
                 this.boatModel.scale.set(0.15, 0.1, 0.1);
-                this.boatModel.rotation.set(0, Math.PI / 2, 0);
+                this.boatModel.rotation.set(0, Math.PI / 2, 0); // Keep rotation if it was correct
                 this.boatModel.updateMatrixWorld(true);
 
                 const boatBoundingBox = new THREE.Box3().setFromObject(this.boatModel);
                 let pivotToBottomOffsetY = boatBoundingBox.isEmpty() ? 0 : (this.boatModel.position.y - boatBoundingBox.min.y);
 
+                // <<< MODIFIED: Revert X/Z positioning offsets or adjust for new map
+                // These offsets were relative to the map center.
                 this.boatModel.position.x = mapCenterForBoat.x + 1.3;
                 this.boatModel.position.z = mapCenterForBoat.z - 0.2;
 
-                let waterLevelY = mapTopYForBoat - 1.7;
-                if (this.mapModel) {
-                    const waterNode = this.mapModel.getObjectByName("Cube.002");
-                    if (waterNode) {
-                        waterNode.updateMatrixWorld(true);
-                        const waterBox = new THREE.Box3().setFromObject(waterNode);
-                        if (!waterBox.isEmpty()) waterLevelY = waterBox.max.y;
+
+                // <<< MODIFIED: Robust Y-positioning for the boat
+                let waterLevelY;
+                const waterNodeName = "Cube.002"; // Or whatever the water mesh is named in island.gltf
+                const waterNode = this.mapModel ? this.mapModel.getObjectByName(waterNodeName) : null;
+
+                if (waterNode) {
+                    waterNode.updateMatrixWorld(true);
+                    const waterBox = new THREE.Box3().setFromObject(waterNode);
+                    if (!waterBox.isEmpty()) {
+                        waterLevelY = waterBox.max.y; // Use the top of the water mesh
+                        console.log(`Sim: Boat using waterNode '${waterNodeName}' (max.y: ${waterLevelY.toFixed(2)}) for Y level.`);
+                    } else {
+                        console.warn(`Sim: Boat waterNode '${waterNodeName}' bounding box is empty. Fallback.`);
+                        waterLevelY = mapTopYForBoat - 1.0; // Fallback: 1 unit below map's highest point
                     }
+                } else {
+                    // Fallback if specific water mesh is not found in the new map model
+                    waterLevelY = mapTopYForBoat - 1.0; // Fallback: 1 unit below map's highest point
+                                                     // Adjust this offset (-1.0) as needed for the island.gltf visuals
+                    console.log(`Sim: Boat waterNode '${waterNodeName}' not found in map. Using mapTopYForBoat (${mapTopYForBoat.toFixed(2)}) - 1.0 = ${waterLevelY.toFixed(2)} as waterLevelY.`);
                 }
-                this.boatModel.position.y = waterLevelY + pivotToBottomOffsetY;
+                this.boatModel.position.y = waterLevelY + pivotToBottomOffsetY-0.6;
+                // --- End of Y-positioning modification ---
 
                 this.initialBoatX = this.boatModel.position.x;
-                this.boatTargetX = this.initialBoatX - 3;
+                this.boatTargetX = this.initialBoatX - 3; // Keep movement logic
 
                 this.boatModel.traverse(node => {
                      if (node.isMesh) {
@@ -286,15 +323,15 @@ loadBoatModel() {
                          node.receiveShadow = true;
                     }
                 });
-                console.log("SimulationMode: Boat GLTF model processed.");
+                console.log("SimulationMode: Boat GLTF model processed. Final pos:", this.boatModel.position, "Scale:", this.boatModel.scale);
             }
-            this.resetSequence(); 
+            this.resetSequence();
         },
         (xhr) => { console.log(`SimulationMode: Boat GLTF model ${(xhr.loaded / xhr.total * 100).toFixed(2)}% loaded`); },
         (error) => {
             console.error('SimulationMode: Boat GLTF loading FAILED.', error);
             this.showErrorToUser(`Failed to load boat model: ${error.message || 'Unknown error'}.`);
-            this.resetSequence(); 
+            this.resetSequence();
         }
     );
 }
@@ -335,7 +372,7 @@ buildBridge3D() {
             minX = Math.min(minX, ap.x);
             maxX = Math.max(maxX, ap.x);
         });
-        if (minX !== Infinity) { 
+        if (minX !== Infinity) {
             bridgeLengthDefiningZ_Span = { start: minX, end: maxX };
         }
     }
@@ -354,8 +391,8 @@ buildBridge3D() {
     const currentJointsSpanBuildModeX = (maxCurrentJointBuildModeX - minCurrentJointBuildModeX);
     const canScaleBuildModeXToSimZ = targetSpanZ_forLength > 0.001 && currentJointsSpanBuildModeX > 0.001;
 
-    this.calculatedBridgeExtents.bridgePlacementOffsetX = 0; 
-    this.calculatedBridgeExtents.bridgePlacementOffsetZ_Global = 0; 
+    this.calculatedBridgeExtents.bridgePlacementOffsetX = 0;
+    this.calculatedBridgeExtents.bridgePlacementOffsetZ_Global = 0;
 
     if (this.calculatedBridgeExtents.mapCenter.lengthSq() === 0 && this.mapModel) {
         const mapBox = new THREE.Box3().setFromObject(this.mapModel);
@@ -387,7 +424,7 @@ buildBridge3D() {
         if (canScaleBuildModeXToSimZ) {
             const normalizedCurrentJointBuildModeX = currentJointsSpanBuildModeX === 0 ? 0 : (bmJoint.x - minCurrentJointBuildModeX) / currentJointsSpanBuildModeX;
             finalJointSimZ_LocalToBridge = targetZStart_Value + (normalizedCurrentJointBuildModeX * targetSpanZ_forLength);
-        } else { 
+        } else {
             finalJointSimZ_LocalToBridge = targetZStart_Value + (bmJoint.x - (minCurrentJointBuildModeX || 0) );
         }
         const finalJointSimZ_World = this.calculatedBridgeExtents.mapCenter.z + finalJointSimZ_LocalToBridge + this.calculatedBridgeExtents.bridgePlacementOffsetZ_Global;
@@ -397,22 +434,22 @@ buildBridge3D() {
         const jointSpecificSimY_World = this.finalBridgeStructureBaseY_3D_ + heightOffsetInSimY;
 
         const simX_Left_World = this.calculatedBridgeExtents.mapCenter.x + xPlaneLeft_Value + this.calculatedBridgeExtents.bridgePlacementOffsetX;
-        
+
         const meshLeft = new THREE.Mesh(jointSphereGeo.clone(), this.jointMaterial3D);
         meshLeft.castShadow = true; meshLeft.receiveShadow = true;
         meshLeft.position.set(simX_Left_World, jointSpecificSimY_World, finalJointSimZ_World);
         jointWorldPositions[bmJoint.id + "_left_plane"] = meshLeft.position.clone();
         this.scene.add(meshLeft); this.bridgeMeshes.push(meshLeft);
 
-        if (Math.abs(xPlaneLeft_Value - xPlaneRight_Value) > 0.001) { 
+        if (Math.abs(xPlaneLeft_Value - xPlaneRight_Value) > 0.001) {
             const simX_Right_World = this.calculatedBridgeExtents.mapCenter.x + xPlaneRight_Value + this.calculatedBridgeExtents.bridgePlacementOffsetX;
             const meshRight = new THREE.Mesh(jointSphereGeo.clone(), this.jointMaterial3D);
             meshRight.castShadow = true; meshRight.receiveShadow = true;
             meshRight.position.set(simX_Right_World, jointSpecificSimY_World, finalJointSimZ_World);
             jointWorldPositions[bmJoint.id + "_right_plane"] = meshRight.position.clone();
             this.scene.add(meshRight); this.bridgeMeshes.push(meshRight);
-        } else { 
-            jointWorldPositions[bmJoint.id + "_right_plane"] = meshLeft.position.clone(); 
+        } else {
+            jointWorldPositions[bmJoint.id + "_right_plane"] = meshLeft.position.clone();
         }
     });
 
@@ -431,21 +468,21 @@ buildBridge3D() {
         const j1_id = bmElement.joint1_id;
         const j2_id = bmElement.joint2_id;
 
-        if (bmElement.materialKey === 'yellow') { 
+        if (bmElement.materialKey === 'yellow') {
             const materialToUse = this.columnMaterial3D;
             const thicknessToUse = COLUMN_MEMBER_THICKNESS_RADIUS;
             createTubeMember(jointWorldPositions[j1_id + "_left_plane"], jointWorldPositions[j2_id + "_left_plane"], materialToUse, thicknessToUse, false, bmElement.id, "_col_L");
             if (Math.abs(xPlaneLeft_Value - xPlaneRight_Value) > 0.001) {
                 createTubeMember(jointWorldPositions[j1_id + "_right_plane"], jointWorldPositions[j2_id + "_right_plane"], materialToUse, thicknessToUse, false, bmElement.id, "_col_R");
             }
-        } else { 
+        } else {
             const p1_l = jointWorldPositions[j1_id + "_left_plane"];
             const p2_l = jointWorldPositions[j2_id + "_left_plane"];
             const p1_r = jointWorldPositions[j1_id + "_right_plane"];
             const p2_r = jointWorldPositions[j2_id + "_right_plane"];
 
-            if (p1_l && p2_l && p1_r && p2_r) { 
-                 if (Math.abs(xPlaneLeft_Value - xPlaneRight_Value) > 0.001) { 
+            if (p1_l && p2_l && p1_r && p2_r) {
+                 if (Math.abs(xPlaneLeft_Value - xPlaneRight_Value) > 0.001) {
                     const vertices = new Float32Array([
                         p1_l.x, p1_l.y, p1_l.z, p2_l.x, p2_l.y, p2_l.z, p2_r.x, p2_r.y, p2_r.z,
                         p1_l.x, p1_l.y, p1_l.z, p2_r.x, p2_r.y, p2_r.z, p1_r.x, p1_r.y, p1_r.z
@@ -457,7 +494,7 @@ buildBridge3D() {
                     rectangleMesh.castShadow = true; rectangleMesh.receiveShadow = true;
                     rectangleMesh.userData = { isBridgeElement: true, isDeckMember: true, originalElementId: bmElement.id + "_deck_rect" };
                     this.scene.add(rectangleMesh); this.bridgeMeshes.push(rectangleMesh);
-                 } else { 
+                 } else {
                     console.warn(`Sim: Deck member ${bmElement.id} has no width, visual might be a line.`);
                  }
             } else {
@@ -481,7 +518,7 @@ addCar() {
                     }
                 }
             });
-        } else { 
+        } else {
             this.car.geometry?.dispose();
             this.car.material?.dispose?.();
         }
@@ -508,14 +545,14 @@ addCar() {
             const originalQuaternion = this.car.quaternion.clone();
             this.car.position.set(0,0,0);
             this.car.quaternion.identity();
-            this.car.updateMatrixWorld(true); 
+            this.car.updateMatrixWorld(true);
 
             const localModelBox = new THREE.Box3();
             this.car.traverse(child => {
                 if (child.isMesh) {
-                    if (!child.geometry.boundingBox) child.geometry.computeBoundingBox(); 
+                    if (!child.geometry.boundingBox) child.geometry.computeBoundingBox();
                     const childBox = child.geometry.boundingBox.clone();
-                    childBox.applyMatrix4(child.matrixWorld); 
+                    childBox.applyMatrix4(child.matrixWorld);
                     localModelBox.union(childBox);
                 }
             });
@@ -523,35 +560,27 @@ addCar() {
             this.carWidth = scaledSize.x;
             this.carHeight = scaledSize.y;
             this.carDepth = scaledSize.z;
-            this.carModelBottomOffsetY = localModelBox.min.y; 
+            this.carModelBottomOffsetY = localModelBox.min.y;
 
             this.car.position.copy(originalPosition);
             this.car.quaternion.copy(originalQuaternion);
             this.car.updateMatrixWorld(true);
 
-            // Define Y-origin for downward rays (above car's top)
+            // <<< MODIFIED: Reverted car's raycast origin Y to a smaller, more sensible value
             this.raycastOriginLocalY = this.carModelBottomOffsetY + this.carHeight + 0.1;
 
-            // Define XZ points for downward raycasts in car's local space
-            const frontZ = this.carDepth * 0.45; // Slightly back from the very front
-            const rearZ = -this.carDepth * 0.45; // Slightly forward from the very rear
-            const sideX = this.carWidth * 0.40;  // Slightly inward from the sides, adjust as needed
+            const frontZ = this.carDepth * 0.45;
+            const rearZ = -this.carDepth * 0.45;
+            const sideX = this.carWidth * 0.40;
 
             this.carRaycastPointsLocalXZ = [
                 { name: "front_center", x: 0,     z: frontZ },
                 { name: "rear_center",  x: 0,     z: rearZ  },
                 { name: "front_right",  x: sideX, z: frontZ },
                 { name: "front_left",   x: -sideX,z: frontZ },
-                { name: "rear_right",   x: sideX, z: rearZ }, // Added for more stability
-                { name: "rear_left",    x: -sideX,z: rearZ }, // Added for more stability
+                { name: "rear_right",   x: sideX, z: rearZ },
+                { name: "rear_left",    x: -sideX,z: rearZ },
             ];
-            // if (DEBUG_CAR_RAYS && this.carRaycastPointsLocalXZ.length > 0) {
-            //     this.carRaycastPointsLocalXZ.forEach(() => {
-            //         const helper = new THREE.ArrowHelper(this.rayDirection, new THREE.Vector3(), 1, 0x00ff00, 0.05, 0.03);
-            //         this.debugRayHelpers.push(helper);
-            //         this.scene.add(helper);
-            //     });
-            // }
 
             this.fallStartTumbleThreshold = this.carHeight * 0.3;
 
@@ -575,8 +604,8 @@ addCar() {
             console.log(`Sim: GLTF Car. Dims (WxHxD): ${this.carWidth.toFixed(2)}x${this.carHeight.toFixed(2)}x${this.carDepth.toFixed(2)}. BottomY: ${this.carModelBottomOffsetY.toFixed(3)}. RaycastOriginLocalY: ${this.raycastOriginLocalY.toFixed(3)}`);
             console.log(`Sim: Car Raycast Points Local XZ:`, this.carRaycastPointsLocalXZ.map(p => `(${p.x.toFixed(2)},${p.z.toFixed(2)})`).join('; '));
             console.log(`Sim: Car Initial X: ${this.initialCarX.toFixed(2)}, Z-Bounds: [${this.carZMin.toFixed(2)}, ${this.carZMax.toFixed(2)}]`);
-            
-            this.loadBoatModel(); 
+
+            this.loadBoatModel(); // Load boat after car setup details are known
         },
         (xhr) => { console.log(`SimulationMode: Car GLTF model ${(xhr.loaded / xhr.total * 100).toFixed(2)}% loaded`); },
         (error) => {
@@ -590,7 +619,7 @@ addCar() {
             this.scene.add(this.car);
 
             this.carModelBottomOffsetY = -this.carHeight / 2;
-            this.raycastOriginLocalY = this.carModelBottomOffsetY + this.carHeight + 0.1;
+            this.raycastOriginLocalY = this.carModelBottomOffsetY + this.carHeight + 0.1; // Fallback also uses correct offset
              const frontZ = this.carDepth * 0.45; const rearZ = -this.carDepth * 0.45; const sideX = this.carWidth * 0.40;
             this.carRaycastPointsLocalXZ = [ { name: "front_center", x: 0, z: frontZ }, { name: "rear_center",  x: 0, z: rearZ  }, { name: "front_right",  x: sideX, z: frontZ }, { name: "front_left",   x: -sideX,z: frontZ }, { name: "rear_right", x: sideX, z: rearZ }, { name: "rear_left", x: -sideX, z: rearZ } ];
 
@@ -632,9 +661,9 @@ updateCarVerticalPosition(isInitialOrResetSetup = false) {
     let effectiveGroundNormal = null;
     let anyRayHit = false;
 
-    const rayFarDistance = (this.raycastOriginLocalY - this.carModelBottomOffsetY) + 0.3; // Increased slightly for safety
-
-    // if (DEBUG_CAR_RAYS) this.debugRayHelpers.forEach(h => h.visible = false); // Hide old helpers
+    // rayFarDistance calculation: (this.carModelBottomOffsetY + this.carHeight + 0.1) - this.carModelBottomOffsetY + 0.3
+    // = this.carHeight + 0.1 + 0.3 = this.carHeight + 0.4
+    const rayFarDistance = (this.raycastOriginLocalY - this.carModelBottomOffsetY) + 0.3;
 
     for (let i = 0; i < this.carRaycastPointsLocalXZ.length; i++) {
         const pointDef = this.carRaycastPointsLocalXZ[i];
@@ -651,14 +680,6 @@ updateCarVerticalPosition(isInitialOrResetSetup = false) {
             hit.object.visible && hit.face &&
             (!hit.object.parent || hit.object.parent.uuid !== this.car.uuid)
         );
-        
-        // if (DEBUG_CAR_RAYS && this.debugRayHelpers[i]) {
-        //     this.debugRayHelpers[i].position.copy(rayOriginWorld);
-        //     this.debugRayHelpers[i].setDirection(this.rayDirection);
-        //     this.debugRayHelpers[i].setLength(rayFarDistance, 0.05, 0.03);
-        //     this.debugRayHelpers[i].setColor(closestValidHit ? 0x00ff00 : 0xff0000); // Green if hit, red if not
-        //     this.debugRayHelpers[i].visible = true;
-        // }
 
         if (closestValidHit) {
             anyRayHit = true;
@@ -680,8 +701,8 @@ updateCarVerticalPosition(isInitialOrResetSetup = false) {
             const targetQuaternion = new THREE.Quaternion().setFromUnitVectors(carUp, this.currentGroundNormal);
             if (isInitialOrResetSetup || (this.onValidGround && !this.isCarFalling && this.verticalVelocity < 0.01)) {
                 this.car.quaternion.copy(targetQuaternion);
-            } else if (this.isCarFalling) {
-                this.car.quaternion.slerp(targetQuaternion, 0.6);
+            } else if (this.onValidGround) {
+                this.car.quaternion.slerp(targetQuaternion, 0.1);
             }
         }
 
@@ -750,9 +771,9 @@ resetSequence() {
         this.isCarRunning = false; this.hasCarCompletedRun = false;
         this.isCarFalling = false; this.verticalVelocity = 0;
         this.isTumbling = false; this.angularVelocity.set(0, 0, 0);
-        
+
         this.car.quaternion.identity();
-        this.currentGroundNormal.set(0, 1, 0); 
+        this.currentGroundNormal.set(0, 1, 0);
         this.onValidGround = false;
 
         this.car.position.x = this.initialCarX;
@@ -773,13 +794,13 @@ resetSequence() {
         this.car.position.y = tempHighY;
         this.car.updateMatrixWorld();
 
-        this.updateCarVerticalPosition(true); 
+        this.updateCarVerticalPosition(true);
 
         if (this.onValidGround) {
-            // This logic for lastGroundY might need adjustment with multi-ray, 
+            // This logic for lastGroundY might need adjustment with multi-ray,
             // highestHitPointY is already stored in this.lastGroundY by updateCarVerticalPosition
         } else {
-            this.lastGroundY = this.car.position.y + (this.carModelBottomOffsetY !== undefined ? this.carModelBottomOffsetY : -(this.carHeight/2||0.1)); 
+            this.lastGroundY = this.car.position.y + (this.carModelBottomOffsetY !== undefined ? this.carModelBottomOffsetY : -(this.carHeight/2||0.1));
         }
     }
 
@@ -793,7 +814,7 @@ resetSequence() {
 
 startSequence() {
     if (!this.car) { console.error("Sim Start: No car to run!"); return; }
-    this.resetSequence(); 
+    this.resetSequence();
 
     if (!this.boatModel || this.hasBoatCompletedRun) {
         this.isBoatMoving = false;
@@ -818,13 +839,13 @@ activate() {
         console.log("Sim: Activating, map model not yet loaded. Asset loading chain should handle setup.");
     } else if (!this.car) {
         console.log("Sim: Activating, map loaded but no car. Calling addCar.");
-        if (this.bridgeMeshes.length === 0) this.buildBridge3D(); 
-        this.addCar(); 
+        if (this.bridgeMeshes.length === 0) this.buildBridge3D();
+        this.addCar();
     } else {
         console.log("Sim: Activating, assets seem loaded. Resetting sequence.");
         this.resetSequence();
     }
-    
+
     if (this.cameraControls && typeof this.cameraControls.onMouseDown === 'function') {
         this.boundOnMouseDown3D = this.onMouseDown3D.bind(this);
         this.boundOnMouseUp3D = this.onMouseUp3D.bind(this);
@@ -859,8 +880,12 @@ onMouseMove3D(event) { if (this.isActive && this.cameraControls?.onMouseMove) th
 onMouseWheel3D(event) { if (this.isActive && this.cameraControls?.onMouseWheel) this.cameraControls.onMouseWheel(event); }
 
 update(deltaTime) {
-    if (!this.isActive || deltaTime <= 0 || !this.car) return; 
+    if (!this.isActive || deltaTime <= 0) return;
     if (deltaTime > 0.1) deltaTime = 0.1;
+
+    if (this.mapAnimationMixer) {
+        this.mapAnimationMixer.update(deltaTime);
+    }
 
     if (this.isBoatMoving && !this.hasBoatCompletedRun && this.boatModel) {
         const direction = Math.sign(this.boatTargetX - this.boatModel.position.x);
@@ -877,12 +902,12 @@ update(deltaTime) {
         if (this.car) this.isCarRunning = true;
     }
 
-    // 1. Cập nhật vị trí thẳng đứng và hướng của xe.
-    if (!this.isTumbling) { 
+    if (!this.car) return;
+
+    if (!this.isTumbling) {
         this.updateCarVerticalPosition(false);
     }
-    
-    // 2. Xử lý di chuyển ngang nếu đang chạy.
+
     if (this.isCarRunning && !this.hasCarCompletedRun) {
         if (this.carZMin >= this.carZMax) {
             this.hasCarCompletedRun = true; this.isCarRunning = false;
@@ -893,12 +918,11 @@ update(deltaTime) {
             const stepDistance = currentCarSpeed * deltaTime;
             let shouldStopDueToFrontObstacle = false;
 
-            // Phát hiện chướng ngại vật phía trước
             if (this.mapModel && Math.abs(currentCarSpeed) > 0.01) {
                 const carForwardWorld = new THREE.Vector3(0, 0, 1).applyQuaternion(this.car.quaternion).normalize();
                 const fallbackBottomY = (this.carHeight !== undefined) ? -this.carHeight/2 : -0.1;
                 const frontRayLocalY = (this.carModelBottomOffsetY !== undefined ? this.carModelBottomOffsetY : fallbackBottomY) + FRONT_RAY_Y_OFFSET_FROM_BOTTOM;
-                
+
                 const rayOriginsLocal = [
                     new THREE.Vector3(0, frontRayLocalY, (this.carDepth / 2 - 0.01)),
                     new THREE.Vector3(this.carWidth / 2 * 0.85, frontRayLocalY, (this.carDepth / 2 - 0.01)),
@@ -932,24 +956,18 @@ update(deltaTime) {
                         }
                     }
                 }
-            } 
+            }
 
             if (!shouldStopDueToFrontObstacle) {
                 const localMoveDelta = new THREE.Vector3(0, 0, stepDistance);
-                const worldMoveDelta = localMoveDelta.clone().applyQuaternion(this.car.quaternion);
+                let worldMoveDelta = localMoveDelta.clone().applyQuaternion(this.car.quaternion);
 
-                // ----- SỬA LỖI Ở ĐÂY -----
-                // Nếu xe đang ở trên mặt đất, chiếu vector di chuyển lên mặt phẳng của mặt đất
-                // để xe trượt dọc theo bề mặt thay vì cố gắng bay lên.
-                if (this.onValidGround && this.currentGroundNormal) {
+                if (this.onValidGround && this.currentGroundNormal && this.currentGroundNormal.lengthSq() > 0.0001) {
                     worldMoveDelta.projectOnPlane(this.currentGroundNormal);
                 }
-                // ----- KẾT THÚC SỬA LỖI -----
-
                 this.car.position.add(worldMoveDelta);
             }
 
-            // Kiểm tra hoàn thành chặng đường
             if (!this.hasCarCompletedRun) {
                 const carWorldZ = this.car.position.z;
                 if (currentCarSpeed > 0 && carWorldZ >= this.carZMax - 0.001) {
@@ -958,16 +976,14 @@ update(deltaTime) {
                     this.car.position.z = this.carZMin; this.hasCarCompletedRun = true; this.isCarRunning = false;
                 }
             }
-        } 
-    } 
+        }
+    }
 
-    // 3. Áp dụng trọng lực nếu xác định là đang rơi.
     if (this.isCarFalling) {
         this.verticalVelocity -= GRAVITY * deltaTime;
         this.car.position.y += this.verticalVelocity * deltaTime;
     }
 
-    // 4. Xử lý quay lộn nhào.
     if (this.isTumbling && this.isCarFalling) {
         const deltaRotationEuler = new THREE.Euler(
             this.angularVelocity.x * deltaTime, this.angularVelocity.y * deltaTime, this.angularVelocity.z * deltaTime, 'XYZ'
@@ -976,9 +992,8 @@ update(deltaTime) {
         this.car.quaternion.multiplyQuaternions(deltaRotationQuaternion, this.car.quaternion);
     }
 
-    this.car.updateMatrixWorld(); 
+    this.car.updateMatrixWorld();
 
-    // Kiểm tra xe rơi ra ngoài thế giới
     const minYPosition = -20;
     const carBottomYCheck = this.car.position.y + (this.carModelBottomOffsetY !== undefined ? this.carModelBottomOffsetY : -(this.carHeight/2 || 0.1));
     if (this.car.position.y < minYPosition && carBottomYCheck < minYPosition) {
@@ -995,12 +1010,12 @@ render() {
 
 dispose() {
     console.log("SimulationMode: Disposing...");
-    this.deactivate(); 
+    this.deactivate();
 
-    // if (DEBUG_CAR_RAYS) {
-    //     this.debugRayHelpers.forEach(helper => this.scene.remove(helper));
-    //     this.debugRayHelpers = [];
-    // }
+    if (this.mapAnimationMixer) {
+        this.mapAnimationMixer.stopAllAction();
+        this.mapAnimationMixer = null;
+    }
 
     if (this.car) {
         if (this.car.traverse) {
@@ -1058,13 +1073,12 @@ dispose() {
     this.deckRectangleMaterial?.dispose(); this.deckRectangleMaterial = null;
 
     if (this.directionalLight) {
-        this.scene.remove(this.directionalLight.target); 
-        this.directionalLight.dispose(); // Important for shadow map resources
+        this.scene.remove(this.directionalLight.target);
+        this.directionalLight.dispose();
         this.scene.remove(this.directionalLight);
         this.directionalLight = null;
     }
     if (this.hemisphereLight) {
-        this.hemisphereLight.dispose();
         this.scene.remove(this.hemisphereLight);
         this.hemisphereLight = null;
     }
@@ -1074,12 +1088,10 @@ dispose() {
         this.sunMesh.material?.dispose();
         this.sunMesh = null;
     }
-    
-    // Dispose ambient light (was directly added to scene)
+
     const ambientLight = this.scene.getObjectByProperty('isAmbientLight', true);
     if(ambientLight){
         this.scene.remove(ambientLight);
-        // ambientLight.dispose(); // AmbientLight doesn't have specific resources to dispose usually
     }
 
     this.camera = null;
